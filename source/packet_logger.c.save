@@ -1,0 +1,29 @@
+#include <stdio.h>
+#include <stdlib.h>
+
+int main() {
+
+
+
+    FILE *fp;
+    char output[1024];
+    char *command = "./packet_listener enp3s0f0";
+    
+    // Open the process for reading
+    fp = popen(command, "r");
+    if (fp == NULL) {
+        fprintf(stderr, "Error running command: %s\n", command);
+        exit(1);
+    }
+    
+    // Read the output line by line
+    while (fgets(output, sizeof(output), fp) != NULL) {
+        // Print the output
+        printf("%s", output);
+    }
+    
+    // Close the process
+    pclose(fp);
+    
+    return 0;
+}
