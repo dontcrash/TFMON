@@ -1,5 +1,5 @@
 # TFMON
- A traffic monitor and HTTP dashboard writte in C
+ A traffic monitor and HTTP dashboard written in C
  
 | Library                                       | Description                     |
 |:----------------------------------------------|---------------------------------|
