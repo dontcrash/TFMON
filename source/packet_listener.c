@@ -73,7 +73,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Compile and apply the filter
-    if (pcap_compile(handle, &fp, "ip and (tcp or udp or icmp)", 0, net) == -1) {
+    if (pcap_compile(handle, &fp, "ip and (tcp or udp or icmp) and not (src net (10 or 172.16/12 or 192.168/16))", 0, net) == -1) {
         fprintf(stderr, "Couldn't compile filter: %s\n", pcap_geterr(handle));
         return EXIT_FAILURE;
     }
