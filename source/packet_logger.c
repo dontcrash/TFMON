@@ -6,6 +6,10 @@ int total_packets = 0;
 
 static void ev_handler(struct mg_connection *nc, int ev, void *ev_data, void *user_data) {
     if (ev == MG_EV_HTTP_MSG) {
+        //TODO - store packets in memory or in DB, avoid duplicates, combine packets with the same source IP
+        //Keep track of protocols used by each IP etc
+        //Another option is to store the info in a DB such as sqlite?
+        //Need to add URL check and display page requested etc
         mg_http_reply(nc, 200, "Content-Type: text/plain\r\n", "Total packets: %d", total_packets);
     }
 }
