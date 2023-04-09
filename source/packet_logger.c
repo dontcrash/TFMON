@@ -56,10 +56,10 @@ static void ev_handler(struct mg_connection *nc, int ev, void *ev_data, void *us
         char *head_html = "<title>TFMON</title><style>td{width:150px;}</style>";
 
         // Generate HTML to display top 10 IP addresses and total data they have sent
-        char top_ips_html[1024];
+        char top_ips_html[2048];
         snprintf(top_ips_html, sizeof(top_ips_html), "<table><tr><td><b>IP Address</b></td><td><b>Data Sent (bytes)</b></td></tr>");
         for (int i = 0; i < TOP_LIST && i < num_ips; ++i) {
-            snprintf(top_ips_html + strlen(top_ips_html), sizeof(top_ips_html) - strlen(top_ips_html), "<tr><td>%s</td><td>%d</td></tr>", stats[i].ip, stats[i].total_bytes);
+            snprintf(top_ips_html + strlen(top_ips_html), sizeof(top_ips_html) - strlen(top_ips_html), "<tr><td><a href=\"https://ipgeolocation.io/ip-location/%s\">%s</a></td><td>%d</td></tr>", stats[i].ip, stats[i].ip, stats[i].total_bytes);
         }
         snprintf(top_ips_html + strlen(top_ips_html), sizeof(top_ips_html) - strlen(top_ips_html), "</table>");
 
