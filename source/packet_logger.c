@@ -2,6 +2,11 @@
 #include <pthread.h>
 #include "libs/mongoose.h"
 
+#define MAX_PACKETS 1000000
+#define TOP_LIST 20
+
+int total_packets = 0;
+
 struct packet {
     char protocol[10];
     char source_ip[20];
@@ -11,19 +16,24 @@ struct packet {
     int packet_size_bytes;
 };
 
-//TODO This cannot be done this way as it is a hard limit and when full will crash
-struct packet packets[1024000];
 
-int num_packets = 0;
+// Log x number of packets before looping back
+struct packet packets[MAX_PACKETS];
+
+int packet_index = 0;
 
 void add_packet(char* protocol, char* source_ip, int source_port, char* destination_ip, int destination_port, int packet_size_bytes) {
-    strcpy(packets[num_packets].protocol, protocol);
-    strcpy(packets[num_packets].source_ip, source_ip);
-    packets[num_packets].source_port = source_port;
-    strcpy(packets[num_packets].destination_ip, destination_ip);
-    packets[num_packets].destination_port = destination_port;
-    packets[num_packets].packet_size_bytes = packet_size_bytes;
-    num_packets++;
+    strcpy(packets[packet_index].protocol, protocol);
+    strcpy(packets[packet_index].source_ip, source_ip);
+    packets[packet_index].source_port = source_port;
+    strcpy(packets[packet_index].destination_ip, destination_ip);
+    packets[packet_index].destination_port = destination_port;
+    packets[packet_index].packet_size_bytes = packet_size_bytes;
+    packet_index++;
+    if(packet_index == MAX_PACKETS) {
+        packet_index = 0;
+    }
+    ++total_packets;
 }
 
 int compare_packets_by_sent(const void* a, const void* b) {
@@ -34,11 +44,11 @@ int compare_packets_by_sent(const void* a, const void* b) {
 
 static void ev_handler(struct mg_connection *nc, int ev, void *ev_data, void *user_data) {
     if (ev == MG_EV_HTTP_MSG) {
-        qsort(packets, num_packets, sizeof(struct packet), compare_packets_by_sent);
-        int i = num_packets - 1; // start from the end of the array
+        qsort(packets, packet_index, sizeof(struct packet), compare_packets_by_sent);
+        int i = packet_index - 1; // start from the end of the array
         char top_ips[1000] = "";
         int count = 0;
-        while (i >= 0 && count < 10) { // limit to top 10 IP addresses
+        while (i >= 0 && count < TOP_LIST) {
             char current_ip[20];
             strcpy(current_ip, packets[i].source_ip);
             int packets_sent = 1;
@@ -48,11 +58,11 @@ static void ev_handler(struct mg_connection *nc, int ev, void *ev_data, void *us
                 i--;
             }
             char ip_str[100];
-            sprintf(ip_str, "%s - %d packets<br>", current_ip, packets_sent);
+            sprintf(ip_str, "<tr><td>%s</td><td>%d</td></tr>", current_ip, packets_sent);
             strcat(top_ips, ip_str);
             count++;
         }
-        mg_http_reply(nc, 200, "Content-Type: text/html\r\n", "<html><body>Top IP addresses by packets sent:<br>%s</body></html>", top_ips);
+        mg_http_reply(nc, 200, "Content-Type: text/html\r\n", "<html><body>Total packets: %d<br><br>Top IP addresses by packets from last %d packets:<br><table>%s</table></body></html>", total_packets, MAX_PACKETS, top_ips);
     }
 }
 
