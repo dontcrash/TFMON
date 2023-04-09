@@ -53,7 +53,7 @@ static void ev_handler(struct mg_connection *nc, int ev, void *ev_data, void *us
         qsort(stats, num_ips, sizeof(struct stats), cmp_stats_by_bytes_desc);
 
         //CSS
-        char *css = "<style>td{width:150px;}</style>";
+        char *head_html = "<title>TFMON</title><style>td{width:150px;}</style>";
 
         // Generate HTML to display top 10 IP addresses and total data they have sent
         char top_ips_html[1024];
@@ -68,7 +68,7 @@ static void ev_handler(struct mg_connection *nc, int ev, void *ev_data, void *us
         snprintf(stats_html, sizeof(stats_html), "Total packets: %d<br>Unique IP addresses: %d", total_packets, num_ips);
 
         // Send HTTP response with generated HTML
-        mg_http_reply(nc, 200, header, "<html><head>%s</head><body>%s<br><br>%s</body></html>", css, stats_html, top_ips_html);
+        mg_http_reply(nc, 200, header, "<html><head>%s</head><body>%s<br><br>%s</body></html>", head_html, stats_html, top_ips_html);
     }
 }
 
