@@ -1,9 +1,9 @@
 #include "helper.h"
 #include <pthread.h>
+#include <stdbool.h>
 #include "libs/mongoose.h"
 
-#define MAX_PACKETS 1000000
-#define TOP_LIST 20
+#define MAX_IPS 1000000
 
 int total_packets = 0;
 
@@ -16,53 +16,27 @@ struct packet {
     int packet_size_bytes;
 };
 
+struct stats {
+    char ip[20];
+    int total_packets;
+    int total_bytes;
+    int num_protocols;
+    char protocols[10][10];
+};
 
-// Log x number of packets before looping back
-struct packet packets[MAX_PACKETS];
+struct stats ip_stats[MAX_IPS];
+int num_ips = 0;
 
-int packet_index = 0;
-
-void add_packet(char* protocol, char* source_ip, int source_port, char* destination_ip, int destination_port, int packet_size_bytes) {
-    strcpy(packets[packet_index].protocol, protocol);
-    strcpy(packets[packet_index].source_ip, source_ip);
-    packets[packet_index].source_port = source_port;
-    strcpy(packets[packet_index].destination_ip, destination_ip);
-    packets[packet_index].destination_port = destination_port;
-    packets[packet_index].packet_size_bytes = packet_size_bytes;
-    packet_index++;
-    if(packet_index == MAX_PACKETS) {
-        packet_index = 0;
-    }
-    ++total_packets;
-}
-
-int compare_packets_by_sent(const void* a, const void* b) {
-    const struct packet* pa = (const struct packet*)a;
-    const struct packet* pb = (const struct packet*)b;
-    return strcmp(pa->source_ip, pb->source_ip);
-}
+//TODO save ip_stats to a file when closing and load it if it exists in the main void
 
 static void ev_handler(struct mg_connection *nc, int ev, void *ev_data, void *user_data) {
     if (ev == MG_EV_HTTP_MSG) {
-        qsort(packets, packet_index, sizeof(struct packet), compare_packets_by_sent);
-        int i = packet_index - 1; // start from the end of the array
-        char top_ips[1000] = "";
-        int count = 0;
-        while (i >= 0 && count < TOP_LIST) {
-            char current_ip[20];
-            strcpy(current_ip, packets[i].source_ip);
-            int packets_sent = 1;
-            i--;
-            while (i >= 0 && strcmp(current_ip, packets[i].source_ip) == 0) {
-                packets_sent++;
-                i--;
-            }
-            char ip_str[100];
-            sprintf(ip_str, "<tr><td>%s</td><td>%d</td></tr>", current_ip, packets_sent);
-            strcat(top_ips, ip_str);
-            count++;
-        }
-        mg_http_reply(nc, 200, "Content-Type: text/html\r\n", "<html><body>Total packets: %d<br><br>Top IP addresses by packets from last %d packets:<br><table>%s</table></body></html>", total_packets, MAX_PACKETS, top_ips);
+        char *header = "Content-Type: text/html\r\n";
+        char unique_text[100];
+        sprintf(unique_text, "IP addresses: %d", num_ips);
+        char packet_text[100];
+        sprintf(packet_text, "Total packets: %d", total_packets);
+        mg_http_reply(nc, 200, header, "<html><body>%s<br>%s</body></html>", unique_text, packet_text);
     }
 }
 
@@ -86,7 +60,44 @@ void *packet_listener_thread(void *dev) {
         char* destination_ip = strtok(NULL, ",");
         int destination_port = atoi(strtok(NULL, ","));
         int packet_size_bytes = atoi(strtok(NULL, ",\n"));
-        add_packet(protocol, source_ip, source_port, destination_ip, destination_port, packet_size_bytes);
+        ++total_packets;
+
+        // check if this IP already exists in our stats array
+        int ip_index = -1;
+        for (int i = 0; i < num_ips; ++i) {
+            if (strcmp(ip_stats[i].ip, source_ip) == 0) {
+                ip_index = i;
+                break;
+            }
+        }
+
+        if (ip_index == -1) {
+            // new IP, initialize stats
+            strncpy(ip_stats[num_ips].ip, source_ip, sizeof(ip_stats[num_ips].ip) - 1);
+            ip_stats[num_ips].total_packets = 0;
+            ip_stats[num_ips].total_bytes = 0;
+            ip_stats[num_ips].num_protocols = 0;
+            ++num_ips;
+        }
+
+        // update stats
+        ip_stats[ip_index].total_packets += 1;
+        ip_stats[ip_index].total_bytes += packet_size_bytes;
+
+        // check if protocol already exists
+        int protocol_index = -1;
+        for (int i = 0; i < ip_stats[ip_index].num_protocols; ++i) {
+            if (strcmp(ip_stats[ip_index].protocols[i], protocol) == 0) {
+                protocol_index = i;
+                break;
+            }
+        }
+
+        if (protocol_index == -1) {
+            // new protocol for this IP, add to protocols array
+            strncpy(ip_stats[ip_index].protocols[ip_stats[ip_index].num_protocols], protocol, sizeof(ip_stats[ip_index].protocols[0]) - 1);
+            ++ip_stats[ip_index].num_protocols;
+        }
     }
 
     // Close the process
