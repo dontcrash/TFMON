@@ -8,43 +8,8 @@
 
 long long int total_packets = 0;
 
-struct packet {
-    char protocol[10];
-    char source_ip[20];
-    int source_port;
-    char destination_ip[20];
-    int destination_port;
-    double packet_size_bytes;
-};
-
-struct stats {
-    char ip[20];
-    long long int total_packets;
-    double total_kilobytes;
-    int num_protocols;
-    char protocols[10][10];
-};
-
 struct stats stats[MAX_IPS];
 int num_ips = 0;
-
-int cmp_stats_by_bytes_desc(const void* a, const void* b) {
-    const struct stats* sa = (const struct stats*)a;
-    const struct stats* sb = (const struct stats*)b;
-
-    int a_kilobytes = (int)(sa->total_kilobytes);
-    int b_kilobytes = (int)(sb->total_kilobytes);
-
-    if (a_kilobytes < b_kilobytes) {
-        return 1;
-    }
-    else if (a_kilobytes > b_kilobytes) {
-        return -1;
-    }
-    else {
-        return 0;
-    }
-}
 
 //TODO save stats to a file when closing and load it if it exists in the main void
 
@@ -62,32 +27,14 @@ static void ev_handler(struct mg_connection *nc, int ev, void *ev_data, void *us
         char top_ips_html[2048];
         snprintf(top_ips_html, sizeof(top_ips_html), "<table><tr><td><b>IP Address</b></td><td><b>Data received</b></td></tr>");
         for (int i = 0; i < TOP_LIST && i < num_ips; ++i) {
-            double total_kb = stats[i].total_kilobytes;
-            // Convert unit here based on size, either show in kB or mB
-            double data_received = 0;
-            char *data_unit = "";
-            if(total_kb < 8) {
-                // Convert from kB to kb
-                data_received = total_kb*8;
-                data_unit = "kb";
-            } else if(total_kb < 125) {
-                // Show in kB
-                data_received = total_kb;
-                data_unit = "kB";
-            } else if(total_kb < 125000) {
-                // Convert to Mb
-                data_received = total_kb/125;
-                data_unit = "Mb";
-            } else {
-                data_received = total_kb/125000;
-                data_unit = "Gb";
-            }
+            double data_received;
+            char *data_unit = convert_data_size(stats[i].total_kilobytes, &data_received);
             snprintf(top_ips_html + strlen(top_ips_html), sizeof(top_ips_html) - strlen(top_ips_html), "<tr><td><a href=\"https://ipgeolocation.io/ip-location/%s\">%s</a></td><td>%.2f %s</td></tr>", stats[i].ip, stats[i].ip, data_received, data_unit);
         }
         snprintf(top_ips_html + strlen(top_ips_html), sizeof(top_ips_html) - strlen(top_ips_html), "</table>");
 
         // Generate HTML to display total packets and unique IP addresses
-        char stats_html[100];
+        char stats_html[1000];
         snprintf(stats_html, sizeof(stats_html), "Total packets: %lld<br>Unique IP addresses: %d", total_packets, num_ips);
 
         // Send HTTP response with generated HTML
@@ -96,7 +43,7 @@ static void ev_handler(struct mg_connection *nc, int ev, void *ev_data, void *us
 }
 
 void *packet_listener_thread(void *dev) {
-    char command[256] = "./packet_listener ";
+    char command[500] = "./packet_listener ";
     strcat(command, (char *)dev);
 
     // Open the process for reading
@@ -106,7 +53,7 @@ void *packet_listener_thread(void *dev) {
         exit(1);
     }
 
-    char output[1024];
+    char output[1000];
     //Loop through output
     while (fgets(output, sizeof(output), fp) != NULL) {
         char* protocol = strtok(output, ",");
