@@ -8,6 +8,7 @@
 #include <netinet/tcp.h>
 #include <netinet/udp.h>
 #include <net/ethernet.h>
+#include <unistd.h>
 
 #define MAX_DEV_LEN 256
 #define LISTEN_PORT 8371
@@ -29,6 +30,34 @@ struct stats {
     char protocols[10][10];
 };
 
+char* get_process_name_by_port(int port) {
+    char command[1024];
+    snprintf(command, sizeof(command), "sudo netstat -plntu | grep -E ':%d\\s' | awk '{print $7}'", port);
+    printf("Command: %s\n", command); // debug line
+    FILE *fp = popen(command, "r");
+    if (fp == NULL) {
+        perror("popen");
+        exit(1);
+    }
+
+    static char process_name[2048]; // Increased buffer size
+    if (fgets(process_name, sizeof(process_name), fp) != NULL) {
+        printf("Process name: %s\n", process_name); // debug line
+        // Trim newline from end of process name
+        size_t len = strlen(process_name);
+        if (len > 0 && process_name[len-1] == '\n') {
+            process_name[len-1] = '\0';
+        }
+    } else {
+        printf("Process name: Unknown\n"); // debug line
+        strcpy(process_name, "Unknown");
+    }
+
+    pclose(fp);
+
+    return process_name;
+}
+
 char* convert_data_size(double total_kb, double *data_received) {
     const char *units[] = {"kb", "KB", "Mb", "MB", "Gb", "GB", "Tb", "TB"};
     const int num_units = 8;
@@ -37,7 +66,7 @@ char* convert_data_size(double total_kb, double *data_received) {
     char* data_unit = (char*) malloc(sizeof(char) * 3);
 
     if (total_kb < base) {
-        *data_received = total_kb;
+        *data_received = total_kb/8;
         strcpy(data_unit, units[0]);
         return data_unit;
     }
