@@ -1,42 +1,24 @@
 #!/bin/bash
 
-# Should probably put all these libraries in a array/loop
-
 # Check if libpcap-dev exists
-if [ -f "/usr/include/pcap/pcap.h" ] 
+if [ -f "/usr/include/pcap/pcap.h" ]
 then
   echo "Found libpcap"
 else
   echo "libpcap not found, installing"
-  sudo apt-get install libpcap-dev
+  apt-get install libpcap-dev
 fi
-
-# Check if libjson-c-dev exists
-if [ -f "/usr/include/json-c/json.h" ]
-then
-  echo "Found libjson-c-dev"
-else
-  echo "libjson-c-dev not found, installing"
-  sudo apt-get install libjson-c-dev
-fi
-
-binary_dir="bin"
-source_dir="source"
 
 # Check if binary directory exists
-if [ ! -d $binary_dir ]; then
+if [ ! -d bin ]; then
     # create the directory
-    mkdir -p $binary_dir
-    echo "Created binary directory $binary_dir"
+    mkdir -p bin
+    echo "Created binary directory"
 fi
 
-packet_listener="packet_listener"
-packet_logger="packet_logger"
-
 echo "Compiling source"
-gcc "$source_dir/$packet_listener.c" -o "$binary_dir/$packet_listener" -lpcap
-gcc "$source_dir/$packet_logger.c" "$source_dir/libs/mongoose.c" -o "$binary_dir/$packet_logger"
-chmod 777 "$binary_dir/$packet_listener"
-chmod 777 "$binary_dir/$packet_logger"
-
+g++ -o bin/packet_listener source/packet_listener.c -lpcap
+g++ -o bin/packet_logger source/packet_logger.c source/libs/mongoose.c -lm
+chmod 777 bin/packet_listener
+chmod 777 bin/packet_logger
 (cd bin && ./packet_logger enp3s0f0)
