@@ -15,17 +15,17 @@ int num_ips = 0;
 
 static void ev_handler(struct mg_connection *nc, int ev, void *ev_data, void *user_data) {
     if (ev == MG_EV_HTTP_MSG) {
-        char *header = "Content-Type: text/html\r\n";
+        const char *header = "Content-Type: text/html\r\n";
 
         // Sort IP stats by total bytes in descending order
         qsort(stats, num_ips, sizeof(struct stats), cmp_stats_by_bytes_desc);
 
         //CSS
-        char *head_html = "<title>TFMON</title><style>td{width:150px;}</style>";
+        const char *head_html = "<title>TFMON</title><style>td{width:150px;}</style>";
 
         // Generate HTML to display top IP addresses and total data they have sent
         char top_ips_html[2048];
-        snprintf(top_ips_html, sizeof(top_ips_html), "<table><tr><td><b>IP Address</b></td><td><b>Data received</b></td></tr>");
+        snprintf(top_ips_html, sizeof(top_ips_html), "<table><tr><td><b>IP Address</b></td><td><b>Data Transferred</b></td></tr>");
         for (int i = 0; i < TOP_LIST && i < num_ips; ++i) {
             double data_received;
             char *data_unit = convert_data_size(stats[i].total_kilobytes, &data_received);
@@ -61,6 +61,10 @@ void *packet_listener_thread(void *dev) {
         int source_port = atoi(strtok(NULL, ","));
         char* destination_ip = strtok(NULL, ",");
         int destination_port = atoi(strtok(NULL, ","));
+//        if(destination_port != 0) {
+//            char *process_name = get_process_name_by_port(destination_port);
+//            printf("Process %s", process_name);
+//        }
         double packet_size_bytes = atof(strtok(NULL, ",\n"));
         ++total_packets;
 
