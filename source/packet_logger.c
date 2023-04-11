@@ -11,35 +11,52 @@ long long int total_packets = 0;
 struct stats stats[MAX_IPS];
 int num_ips = 0;
 
-//TODO save stats to a file when closing and load it if it exists in the main void
+// TODO save stats to a file when closing and load it if it exists in the main void
 
 static void ev_handler(struct mg_connection *nc, int ev, void *ev_data, void *user_data) {
     if (ev == MG_EV_HTTP_MSG) {
         const char *header = "Content-Type: text/html\r\n";
 
-        // Sort IP stats by total bytes in descending order
-        qsort(stats, num_ips, sizeof(struct stats), cmp_stats_by_bytes_desc);
+        struct mg_http_message *hm = (struct mg_http_message *) ev_data;
+        if (mg_http_match_uri(hm, "/ip/*")) {
+            char *token, *ip_address;
+            char* uri = strdup(hm->uri.ptr);
+            token = strtok(uri, "/");
+            while (token != NULL) {
+                if (strcmp(token, "ip") == 0) {
+                    ip_address = strtok(NULL, " ");
+                    break;
+                }
+                token = strtok(NULL, "/");
+            }
+            //Need to keep track of the ports each IP tries to connect to and then loop through
+            //char *process_name = get_process_name_by_port(port);
+            mg_http_reply(nc, 200, header, "<html><head></head></body>%s</html>", ip_address);
+        } else {
+            // Sort IP stats by total bytes in descending order
+            qsort(stats, num_ips, sizeof(struct stats), cmp_stats_by_bytes_desc);
 
-        //CSS
-        const char *head_html = "<title>TFMON</title><style>td{width:150px;}</style>";
+            // CSS
+            const char *head_html = "<title>TFMON</title><style>td{width:150px;}</style>";
 
-        // Generate HTML to display top IP addresses and total data they have sent
-        char top_ips_html[2048];
-        snprintf(top_ips_html, sizeof(top_ips_html), "<table><tr><td><b>IP Address</b></td><td><b>Data Transferred</b></td></tr>");
-        for (int i = 0; i < TOP_LIST && i < num_ips; ++i) {
-            double data_received;
-            char *data_unit = convert_data_size(stats[i].total_kilobytes, &data_received);
-            snprintf(top_ips_html + strlen(top_ips_html), sizeof(top_ips_html) - strlen(top_ips_html), "<tr><td><a href=\"https://ipgeolocation.io/ip-location/%s\">%s</a></td><td>%.2f %s</td></tr>", stats[i].ip, stats[i].ip, data_received, data_unit);
+            // Generate HTML to display top IP addresses and total data they have sent
+            char top_ips_html[2048];
+            snprintf(top_ips_html, sizeof(top_ips_html), "<table><tr><td><b>IP Address</b></td><td><b>Data Transferred</b></td></tr>");
+            for (int i = 0; i < TOP_LIST && i < num_ips; ++i) {
+                double data_received;
+                char *data_unit = convert_data_size(stats[i].total_kilobytes, &data_received);
+                snprintf(top_ips_html + strlen(top_ips_html), sizeof(top_ips_html) - strlen(top_ips_html), "<tr><td><a href=\"https://ipgeolocation.io/ip-location/%s\">%s</a></td><td>%.2f %s</td></tr>", stats[i].ip, stats[i].ip, data_received, data_unit);
+            }
+            snprintf(top_ips_html + strlen(top_ips_html), sizeof(top_ips_html) - strlen(top_ips_html), "</table>");
+
+            // Generate HTML to display total packets and unique IP addresses
+            char stats_html[1000];
+            snprintf(stats_html, sizeof(stats_html), "Total packets: %lld<br>Unique IP addresses: %d", total_packets, num_ips);
+
+            // Send HTTP response with generated HTML
+            mg_http_reply(nc, 200, header, "<html><head>%s</head><body>%s<br><br>%s</body></html>", head_html, stats_html, top_ips_html);
         }
-        snprintf(top_ips_html + strlen(top_ips_html), sizeof(top_ips_html) - strlen(top_ips_html), "</table>");
-
-        // Generate HTML to display total packets and unique IP addresses
-        char stats_html[1000];
-        snprintf(stats_html, sizeof(stats_html), "Total packets: %lld<br>Unique IP addresses: %d", total_packets, num_ips);
-
-        // Send HTTP response with generated HTML
-        mg_http_reply(nc, 200, header, "<html><head>%s</head><body>%s<br><br>%s</body></html>", head_html, stats_html, top_ips_html);
-    }
+   }
 }
 
 void *packet_listener_thread(void *dev) {
@@ -53,18 +70,16 @@ void *packet_listener_thread(void *dev) {
         exit(1);
     }
 
-    char output[1000];
+    char *output = NULL;
+    size_t output_size = 0;
+    ssize_t bytes_read;
     //Loop through output
-    while (fgets(output, sizeof(output), fp) != NULL) {
+    while ((bytes_read = getline(&output, &output_size, fp)) != -1) {
         char* protocol = strtok(output, ",");
         char* source_ip = strtok(NULL, ",");
         int source_port = atoi(strtok(NULL, ","));
         char* destination_ip = strtok(NULL, ",");
         int destination_port = atoi(strtok(NULL, ","));
-//        if(destination_port != 0) {
-//            char *process_name = get_process_name_by_port(destination_port);
-//            printf("Process %s", process_name);
-//        }
         double packet_size_bytes = atof(strtok(NULL, ",\n"));
         ++total_packets;
 
@@ -107,8 +122,8 @@ void *packet_listener_thread(void *dev) {
     }
 
     // Close the process
+    free(output);
     pclose(fp);
-
     pthread_exit(NULL);
 }
 
