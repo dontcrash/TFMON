@@ -3,10 +3,10 @@
 #include <stdbool.h>
 #include "libs/mongoose.h"
 
-#define MAX_IPS 1000000
-#define TOP_LIST 10
+#define MAX_IPS 10000000
+#define TOP_LIST 15
 
-int total_packets = 0;
+long long int total_packets = 0;
 
 struct packet {
     char protocol[10];
@@ -14,13 +14,13 @@ struct packet {
     int source_port;
     char destination_ip[20];
     int destination_port;
-    int packet_size_bytes;
+    double packet_size_bytes;
 };
 
 struct stats {
     char ip[20];
-    int total_packets;
-    int total_bytes;
+    long long int total_packets;
+    double total_kilobytes;
     int num_protocols;
     char protocols[10][10];
 };
@@ -32,10 +32,13 @@ int cmp_stats_by_bytes_desc(const void* a, const void* b) {
     const struct stats* sa = (const struct stats*)a;
     const struct stats* sb = (const struct stats*)b;
 
-    if (sa->total_bytes < sb->total_bytes) {
+    int a_kilobytes = (int)(sa->total_kilobytes);
+    int b_kilobytes = (int)(sb->total_kilobytes);
+
+    if (a_kilobytes < b_kilobytes) {
         return 1;
     }
-    else if (sa->total_bytes > sb->total_bytes) {
+    else if (a_kilobytes > b_kilobytes) {
         return -1;
     }
     else {
@@ -55,17 +58,37 @@ static void ev_handler(struct mg_connection *nc, int ev, void *ev_data, void *us
         //CSS
         char *head_html = "<title>TFMON</title><style>td{width:150px;}</style>";
 
-        // Generate HTML to display top 10 IP addresses and total data they have sent
+        // Generate HTML to display top IP addresses and total data they have sent
         char top_ips_html[2048];
-        snprintf(top_ips_html, sizeof(top_ips_html), "<table><tr><td><b>IP Address</b></td><td><b>Data Sent (bytes)</b></td></tr>");
+        snprintf(top_ips_html, sizeof(top_ips_html), "<table><tr><td><b>IP Address</b></td><td><b>Data received</b></td></tr>");
         for (int i = 0; i < TOP_LIST && i < num_ips; ++i) {
-            snprintf(top_ips_html + strlen(top_ips_html), sizeof(top_ips_html) - strlen(top_ips_html), "<tr><td><a href=\"https://ipgeolocation.io/ip-location/%s\">%s</a></td><td>%d</td></tr>", stats[i].ip, stats[i].ip, stats[i].total_bytes);
+            double total_kb = stats[i].total_kilobytes;
+            // Convert unit here based on size, either show in kB or mB
+            double data_received = 0;
+            char *data_unit = "";
+            if(total_kb < 8) {
+                // Convert from kB to kb
+                data_received = total_kb*8;
+                data_unit = "kb";
+            } else if(total_kb < 125) {
+                // Show in kB
+                data_received = total_kb;
+                data_unit = "kB";
+            } else if(total_kb < 125000) {
+                // Convert to Mb
+                data_received = total_kb/125;
+                data_unit = "Mb";
+            } else {
+                data_received = total_kb/125000;
+                data_unit = "Gb";
+            }
+            snprintf(top_ips_html + strlen(top_ips_html), sizeof(top_ips_html) - strlen(top_ips_html), "<tr><td><a href=\"https://ipgeolocation.io/ip-location/%s\">%s</a></td><td>%.2f %s</td></tr>", stats[i].ip, stats[i].ip, data_received, data_unit);
         }
         snprintf(top_ips_html + strlen(top_ips_html), sizeof(top_ips_html) - strlen(top_ips_html), "</table>");
 
         // Generate HTML to display total packets and unique IP addresses
         char stats_html[100];
-        snprintf(stats_html, sizeof(stats_html), "Total packets: %d<br>Unique IP addresses: %d", total_packets, num_ips);
+        snprintf(stats_html, sizeof(stats_html), "Total packets: %lld<br>Unique IP addresses: %d", total_packets, num_ips);
 
         // Send HTTP response with generated HTML
         mg_http_reply(nc, 200, header, "<html><head>%s</head><body>%s<br><br>%s</body></html>", head_html, stats_html, top_ips_html);
@@ -91,7 +114,7 @@ void *packet_listener_thread(void *dev) {
         int source_port = atoi(strtok(NULL, ","));
         char* destination_ip = strtok(NULL, ",");
         int destination_port = atoi(strtok(NULL, ","));
-        int packet_size_bytes = atoi(strtok(NULL, ",\n"));
+        double packet_size_bytes = atof(strtok(NULL, ",\n"));
         ++total_packets;
 
         // check if this IP already exists in our stats array
@@ -107,14 +130,15 @@ void *packet_listener_thread(void *dev) {
             // new IP, initialize stats
             strncpy(stats[num_ips].ip, source_ip, sizeof(stats[num_ips].ip) - 1);
             stats[num_ips].total_packets = 0;
-            stats[num_ips].total_bytes = 0;
+            stats[num_ips].total_kilobytes = 0;
             stats[num_ips].num_protocols = 0;
             ++num_ips;
         }
 
         // update stats
         stats[ip_index].total_packets += 1;
-        stats[ip_index].total_bytes += packet_size_bytes;
+        //Use 1000, pcap_pkthdr Struct references the len int as bytes (1000)
+        stats[ip_index].total_kilobytes += packet_size_bytes/1000;
 
         // check if protocol already exists
         int protocol_index = -1;
@@ -124,7 +148,6 @@ void *packet_listener_thread(void *dev) {
                 break;
             }
         }
-
         if (protocol_index == -1) {
             // new protocol for this IP, add to protocols array
             strncpy(stats[ip_index].protocols[stats[ip_index].num_protocols], protocol, sizeof(stats[ip_index].protocols[0]) - 1);
